@@ -18,7 +18,9 @@ interface Track {
 
 // ─── iTunes Search API ────────────────────────────────────────────────────────
 async function searchItunes(query: string, limit = 20): Promise<Track[]> {
-  const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=${limit}`;
+  const url = `https://itunes.apple.com/search?term=${encodeURIComponent(
+    query
+  )}&entity=song&limit=${limit}`;
   const res = await fetch(url);
   const json = await res.json();
   return (json.results ?? []).map((r: any) => ({
@@ -29,6 +31,35 @@ async function searchItunes(query: string, limit = 20): Promise<Track[]> {
     cover: (r.artworkUrl100 ?? "").replace("100x100", "300x300"),
     previewUrl: r.previewUrl ?? null,
   }));
+}
+
+// ─── Library helpers (localStorage) ───────────────────────────────────────────
+const LIBRARY_KEY = "gv_library";
+
+function getLibrary(): Track[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem(LIBRARY_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function saveToLibrary(track: Track) {
+  const lib = getLibrary();
+  if (!lib.find((t) => t.id === track.id)) {
+    lib.unshift(track);
+    localStorage.setItem(LIBRARY_KEY, JSON.stringify(lib));
+  }
+}
+
+function removeFromLibrary(trackId: number) {
+  const lib = getLibrary().filter((t) => t.id !== trackId);
+  localStorage.setItem(LIBRARY_KEY, JSON.stringify(lib));
+}
+
+function isInLibrary(trackId: number): boolean {
+  return getLibrary().some((t) => t.id === trackId);
 }
 
 // ─── Subscription helpers ─────────────────────────────────────────────────────
@@ -66,15 +97,15 @@ function PaywallModal({ onClose }: { onClose: () => void }) {
         <div className="text-4xl mb-3">🎵</div>
         <h2 className="text-white text-2xl font-bold mb-2">Commercial-Free Music</h2>
         <p className="text-zinc-400 text-sm mb-6">
-          Enjoy uninterrupted, ad-free listening for just{" "}
+          Unlock the full experience for just{" "}
           <span className="text-white font-semibold">{PRICE_DISPLAY}</span>.
         </p>
         <ul className="text-left text-zinc-300 text-sm space-y-2 mb-6">
           {[
-            "\u2713 100% commercial-free listening",
-            "\u2713 AI-generated playlists",
-            "\u2713 Unlimited music search",
-            "\u2713 Cancel anytime",
+            "✓ 100% commercial-free listening",
+            "✓ Save unlimited tracks to your library",
+            "✓ AI-generated playlists",
+            "✓ Cancel anytime",
           ].map((f) => (
             <li key={f}>{f}</li>
           ))}
@@ -83,7 +114,7 @@ function PaywallModal({ onClose }: { onClose: () => void }) {
           onClick={redirectToStripe}
           className="w-full bg-violet-600 hover:bg-violet-500 text-white font-semibold py-3 rounded-xl transition-colors text-sm"
         >
-          Go Commercial-Free \u00B7 {PRICE_DISPLAY}
+          Go Commercial-Free · {PRICE_DISPLAY}
         </button>
         <button
           onClick={onClose}
@@ -99,6 +130,7 @@ function PaywallModal({ onClose }: { onClose: () => void }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function GoodVibesFrontend() {
   const [tracks, setTracks] = useState<Track[]>([]);
+  const [library, setLibrary] = useState<Track[]>([]);
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [playing, setPlaying] = useState(false);
   const [searchInput, setSearchInput] = useState("");
@@ -109,18 +141,31 @@ export default function GoodVibesFrontend() {
   const [subscribed, setSubscribed] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [view, setView] = useState<"search" | "library">("search");
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  useEffect(() => { setSubscribed(isSubscribed()); }, []);
-  useEffect(() => { handleSearch("top hits 2024"); }, []);
+  // Check subscription & load library on mount
+  useEffect(() => {
+    setSubscribed(isSubscribed());
+    setLibrary(getLibrary());
+  }, []);
 
+  // Load trending tracks on first render
+  useEffect(() => {
+    handleSearch("top hits 2024");
+  }, []);
+
+  // Sync audio playback
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !currentTrack?.previewUrl) return;
     audio.volume = volume;
-    if (playing) { audio.play().catch(() => setPlaying(false)); }
-    else { audio.pause(); }
+    if (playing) {
+      audio.play().catch(() => setPlaying(false));
+    } else {
+      audio.pause();
+    }
   }, [playing, currentTrack, volume]);
 
   const handleSearch = useCallback(async (q: string) => {
@@ -130,9 +175,9 @@ export default function GoodVibesFrontend() {
     try {
       const results = await searchItunes(q);
       setTracks(results);
-      if (results.length === 0) setError("No results found.");
+      if (results.length === 0) setError("No results found. Try a different search.");
     } catch {
-      setError("Couldn't reach the music library.");
+      setError("Couldn't reach the music library. Check your connection.");
     } finally {
       setLoading(false);
     }
@@ -140,14 +185,34 @@ export default function GoodVibesFrontend() {
 
   const handleTrackSelect = (track: Track) => {
     if (!track.previewUrl) return;
-    if (currentTrack?.id === track.id) { setPlaying((p) => !p); return; }
+    if (currentTrack?.id === track.id) {
+      setPlaying((p) => !p);
+      return;
+    }
     setCurrentTrack(track);
     setPlaying(true);
   };
 
+  const handleSaveTrack = (track: Track, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!subscribed) {
+      setShowPaywall(true);
+      return;
+    }
+    if (isInLibrary(track.id)) {
+      removeFromLibrary(track.id);
+    } else {
+      saveToLibrary(track);
+    }
+    setLibrary(getLibrary());
+  };
+
   const generateAIPlaylist = () => {
     if (!aiPrompt) return;
-    if (!subscribed) { setShowPaywall(true); return; }
+    if (!subscribed) {
+      setShowPaywall(true);
+      return;
+    }
     setGeneratedPlaylist([
       `${aiPrompt} Mix Vol. 1`,
       `${aiPrompt} Late Night Session`,
@@ -156,14 +221,18 @@ export default function GoodVibesFrontend() {
     ]);
   };
 
+  const displayTracks = view === "library" ? library : tracks;
+
   return (
     <div className="min-h-screen bg-zinc-950 text-white p-6 font-sans max-w-2xl mx-auto">
-      <AnimatePresence>
-        {showPaywall && <PaywallModal onClose={() => setShowPaywall(false)} />}
-      </AnimatePresence>
+      <AnimatePresence>{showPaywall && <PaywallModal onClose={() => setShowPaywall(false)} />}</AnimatePresence>
 
       {currentTrack?.previewUrl && (
-        <audio ref={audioRef} src={currentTrack.previewUrl} onEnded={() => setPlaying(false)} />
+        <audio
+          ref={audioRef}
+          src={currentTrack.previewUrl}
+          onEnded={() => setPlaying(false)}
+        />
       )}
 
       {/* Header */}
@@ -171,39 +240,78 @@ export default function GoodVibesFrontend() {
         <h1 className="text-2xl font-bold tracking-tight">Good Vibes 🎧</h1>
         {subscribed ? (
           <span className="text-xs bg-violet-700/40 text-violet-300 border border-violet-600/40 px-3 py-1 rounded-full">
-            \u2713 Commercial-Free
+            ✓ Commercial-Free
           </span>
         ) : (
           <button
             onClick={() => setShowPaywall(true)}
             className="text-xs bg-violet-600 hover:bg-violet-500 text-white px-3 py-1 rounded-full transition-colors"
           >
-            Go Commercial-Free \u00B7 {PRICE_DISPLAY}
+            Go Commercial-Free · {PRICE_DISPLAY}
           </button>
         )}
       </div>
 
-      {/* Search */}
-      <form
-        onSubmit={(e) => { e.preventDefault(); handleSearch(searchInput); }}
-        className="flex gap-2 mb-6"
-      >
-        <input
-          type="text"
-          placeholder="Search any song, artist, or album\u2026"
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          className="flex-1 bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-600"
-        />
-        <button type="submit" className="bg-violet-600 hover:bg-violet-500 text-white text-sm px-4 py-2 rounded-xl transition-colors">
-          Search
+      {/* Tab navigation */}
+      <div className="flex gap-1 mb-4 bg-zinc-900 rounded-xl p-1">
+        <button
+          onClick={() => setView("search")}
+          className={`flex-1 text-sm py-2 rounded-lg font-medium transition-colors ${
+            view === "search"
+              ? "bg-violet-600 text-white"
+              : "text-zinc-400 hover:text-white"
+          }`}
+        >
+          🔍 Search
         </button>
-      </form>
+        <button
+          onClick={() => setView("library")}
+          className={`flex-1 text-sm py-2 rounded-lg font-medium transition-colors ${
+            view === "library"
+              ? "bg-violet-600 text-white"
+              : "text-zinc-400 hover:text-white"
+          }`}
+        >
+          📚 My Library{library.length > 0 && ` (${library.length})`}
+        </button>
+      </div>
 
-      {/* Now Playing */}
+      {/* Search bar (only in search view) */}
+      {view === "search" && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSearch(searchInput);
+          }}
+          className="flex gap-2 mb-6"
+        >
+          <input
+            type="text"
+            placeholder="Search any song, artist, or album…"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            className="flex-1 bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-600"
+          />
+          <button
+            type="submit"
+            className="bg-violet-600 hover:bg-violet-500 text-white text-sm px-4 py-2 rounded-xl transition-colors"
+          >
+            Search
+          </button>
+        </form>
+      )}
+
+      {/* Now Playing bar */}
       {currentTrack && (
-        <motion.div layout className="bg-zinc-800/80 border border-violet-600/40 rounded-2xl p-4 mb-6 flex items-center gap-4">
-          <img src={currentTrack.cover} alt={currentTrack.title} className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
+        <motion.div
+          layout
+          className="bg-zinc-800/80 border border-violet-600/40 rounded-2xl p-4 mb-6 flex items-center gap-4"
+        >
+          <img
+            src={currentTrack.cover}
+            alt={currentTrack.title}
+            className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
+          />
           <div className="flex-1 min-w-0">
             <p className="font-semibold text-sm truncate">{currentTrack.title}</p>
             <p className="text-xs text-zinc-400 truncate">{currentTrack.artist}</p>
@@ -214,76 +322,126 @@ export default function GoodVibesFrontend() {
               onClick={() => setPlaying((p) => !p)}
               className="bg-violet-600 hover:bg-violet-500 text-white rounded-full w-9 h-9 flex items-center justify-center text-base transition-colors"
             >
-              {playing ? "\u23F8" : "\u25B6"}
+              {playing ? "⏸" : "▶"}
             </button>
-            <input type="range" min={0} max={1} step={0.01} value={volume}
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={volume}
               onChange={(e) => setVolume(Number(e.target.value))}
-              className="w-20 accent-violet-500" />
+              className="w-20 accent-violet-500"
+            />
           </div>
         </motion.div>
       )}
 
       {/* Track list */}
       <div className="space-y-2 mb-8">
-        {loading && <div className="text-center text-zinc-500 py-10 text-sm animate-pulse">Searching the music library\u2026</div>}
-        {error && !loading && <div className="text-center text-red-400 py-6 text-sm">{error}</div>}
-        {!loading && tracks.map((track) => {
-          const isPlaying = currentTrack?.id === track.id && playing;
-          const isCurrent = currentTrack?.id === track.id;
-          const noPreview = !track.previewUrl;
-          return (
-            <motion.div
-              key={track.id}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => !noPreview && handleTrackSelect(track)}
-              className={`flex items-center gap-3 rounded-xl p-3 border transition-colors ${
-                noPreview ? "opacity-40 cursor-not-allowed border-zinc-800" : "cursor-pointer"
-              } ${
-                isCurrent ? "bg-zinc-800 border-violet-500" : "bg-zinc-800/40 border-zinc-700/50 hover:border-zinc-500"
-              }`}
-            >
-              <div className="relative flex-shrink-0">
-                <img src={track.cover} alt={track.title} className="w-11 h-11 rounded-lg object-cover" />
-                {isPlaying && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-lg">
-                    <span className="text-white text-xs animate-pulse">\u25B6</span>
-                  </div>
+        {view === "search" && loading && (
+          <div className="text-center text-zinc-500 py-10 text-sm animate-pulse">
+            Searching the music library…
+          </div>
+        )}
+        {view === "search" && error && !loading && (
+          <div className="text-center text-red-400 py-6 text-sm">{error}</div>
+        )}
+        {view === "library" && library.length === 0 && (
+          <div className="text-center text-zinc-500 py-10 text-sm">
+            <p className="text-2xl mb-2">📚</p>
+            <p>Your library is empty.</p>
+            <p className="text-xs mt-1 text-zinc-600">Search for music and tap the heart to save tracks here.</p>
+          </div>
+        )}
+        {!loading &&
+          displayTracks.map((track) => {
+            const isPlaying = currentTrack?.id === track.id && playing;
+            const isCurrent = currentTrack?.id === track.id;
+            const noPreview = !track.previewUrl;
+            const saved = isInLibrary(track.id);
+            return (
+              <motion.div
+                key={track.id}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => !noPreview && handleTrackSelect(track)}
+                className={`flex items-center gap-3 rounded-xl p-3 border transition-colors ${
+                  noPreview
+                    ? "opacity-40 cursor-not-allowed border-zinc-800"
+                    : "cursor-pointer"
+                } ${
+                  isCurrent
+                    ? "bg-zinc-800 border-violet-500"
+                    : "bg-zinc-800/40 border-zinc-700/50 hover:border-zinc-500"
+                }`}
+              >
+                <div className="relative flex-shrink-0">
+                  <img
+                    src={track.cover}
+                    alt={track.title}
+                    className="w-11 h-11 rounded-lg object-cover"
+                  />
+                  {isPlaying && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-lg">
+                      <span className="text-white text-xs animate-pulse">▶</span>
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{track.title}</p>
+                  <p className="text-xs text-zinc-400 truncate">
+                    {track.artist}
+                    {track.album ? ` · ${track.album}` : ""}
+                  </p>
+                </div>
+                <button
+                  onClick={(e) => handleSaveTrack(track, e)}
+                  className={`flex-shrink-0 text-lg transition-colors ${
+                    saved
+                      ? "text-pink-500 hover:text-pink-400"
+                      : "text-zinc-600 hover:text-pink-400"
+                  }`}
+                  title={saved ? "Remove from library" : "Save to library"}
+                >
+                  {saved ? "♥" : "♡"}
+                </button>
+                {noPreview && (
+                  <span className="text-xs text-zinc-600">no preview</span>
                 )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{track.title}</p>
-                <p className="text-xs text-zinc-400 truncate">{track.artist}{track.album ? ` \u00B7 ${track.album}` : ""}</p>
-              </div>
-              {noPreview && <span className="text-xs text-zinc-600">no preview</span>}
-            </motion.div>
-          );
-        })}
+              </motion.div>
+            );
+          })}
       </div>
 
       {/* AI Playlist */}
       <div className="bg-zinc-800/60 border border-zinc-700 rounded-2xl p-5">
         <h2 className="text-sm font-semibold mb-3 flex items-center gap-2">
-          \u2728 AI Playlist Generator
-          {!subscribed && <span className="text-xs text-violet-400 font-normal">\u00B7 Commercial-Free</span>}
+          ✨ AI Playlist Generator
+          {!subscribed && (
+            <span className="text-xs text-violet-400 font-normal">· Premium</span>
+          )}
         </h2>
         <div className="flex gap-2">
           <input
             type="text"
-            placeholder="Describe your vibe\u2026"
+            placeholder="Describe your vibe…"
             value={aiPrompt}
             onChange={(e) => setAiPrompt(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && generateAIPlaylist()}
             className="flex-1 bg-zinc-700 border border-zinc-600 rounded-xl px-3 py-2 text-sm text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-600"
           />
-          <button onClick={generateAIPlaylist} className="bg-violet-600 hover:bg-violet-500 text-white text-sm px-4 py-2 rounded-xl transition-colors">
-            {subscribed ? "Generate" : "\uD83D\uDD12"}
+          <button
+            onClick={generateAIPlaylist}
+            className="bg-violet-600 hover:bg-violet-500 text-white text-sm px-4 py-2 rounded-xl transition-colors"
+          >
+            {subscribed ? "Generate" : "🔒"}
           </button>
         </div>
         {generatedPlaylist.length > 0 && (
           <ul className="mt-3 space-y-1">
             {generatedPlaylist.map((name) => (
               <li key={name} className="text-sm text-zinc-300 flex items-center gap-2">
-                <span className="text-zinc-500">\u2022</span> {name}
+                <span className="text-zinc-500">•</span> {name}
               </li>
             ))}
           </ul>
