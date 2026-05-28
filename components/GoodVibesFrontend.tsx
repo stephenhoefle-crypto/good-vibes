@@ -64,17 +64,17 @@ function PaywallModal({ onClose }: { onClose: () => void }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="text-4xl mb-3">🎵</div>
-        <h2 className="text-white text-2xl font-bold mb-2">Good Vibes Premium</h2>
+        <h2 className="text-white text-2xl font-bold mb-2">Commercial-Free Music</h2>
         <p className="text-zinc-400 text-sm mb-6">
-          Unlock AI playlists and more for just{" "}
+          Enjoy uninterrupted, ad-free listening for just{" "}
           <span className="text-white font-semibold">{PRICE_DISPLAY}</span>.
         </p>
         <ul className="text-left text-zinc-300 text-sm space-y-2 mb-6">
           {[
-            "✓ AI-generated playlists",
-            "✓ Unlimited music search",
-            "✓ Offline listening",
-            "✓ Cancel anytime",
+            "\u2713 100% commercial-free listening",
+            "\u2713 AI-generated playlists",
+            "\u2713 Unlimited music search",
+            "\u2713 Cancel anytime",
           ].map((f) => (
             <li key={f}>{f}</li>
           ))}
@@ -83,7 +83,7 @@ function PaywallModal({ onClose }: { onClose: () => void }) {
           onClick={redirectToStripe}
           className="w-full bg-violet-600 hover:bg-violet-500 text-white font-semibold py-3 rounded-xl transition-colors text-sm"
         >
-          Subscribe for {PRICE_DISPLAY}
+          Go Commercial-Free \u00B7 {PRICE_DISPLAY}
         </button>
         <button
           onClick={onClose}
@@ -171,14 +171,14 @@ export default function GoodVibesFrontend() {
         <h1 className="text-2xl font-bold tracking-tight">Good Vibes 🎧</h1>
         {subscribed ? (
           <span className="text-xs bg-violet-700/40 text-violet-300 border border-violet-600/40 px-3 py-1 rounded-full">
-            ✓ Premium
+            \u2713 Commercial-Free
           </span>
         ) : (
           <button
             onClick={() => setShowPaywall(true)}
             className="text-xs bg-violet-600 hover:bg-violet-500 text-white px-3 py-1 rounded-full transition-colors"
           >
-            Upgrade · {PRICE_DISPLAY}
+            Go Commercial-Free \u00B7 {PRICE_DISPLAY}
           </button>
         )}
       </div>
@@ -190,7 +190,7 @@ export default function GoodVibesFrontend() {
       >
         <input
           type="text"
-          placeholder="Search any song, artist, or album…"
+          placeholder="Search any song, artist, or album\u2026"
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
           className="flex-1 bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-600"
@@ -214,7 +214,7 @@ export default function GoodVibesFrontend() {
               onClick={() => setPlaying((p) => !p)}
               className="bg-violet-600 hover:bg-violet-500 text-white rounded-full w-9 h-9 flex items-center justify-center text-base transition-colors"
             >
-              {playing ? "⏸" : "▶"}
+              {playing ? "\u23F8" : "\u25B6"}
             </button>
             <input type="range" min={0} max={1} step={0.01} value={volume}
               onChange={(e) => setVolume(Number(e.target.value))}
@@ -225,7 +225,7 @@ export default function GoodVibesFrontend() {
 
       {/* Track list */}
       <div className="space-y-2 mb-8">
-        {loading && <div className="text-center text-zinc-500 py-10 text-sm animate-pulse">Searching the music library…</div>}
+        {loading && <div className="text-center text-zinc-500 py-10 text-sm animate-pulse">Searching the music library\u2026</div>}
         {error && !loading && <div className="text-center text-red-400 py-6 text-sm">{error}</div>}
         {!loading && tracks.map((track) => {
           const isPlaying = currentTrack?.id === track.id && playing;
@@ -246,13 +246,13 @@ export default function GoodVibesFrontend() {
                 <img src={track.cover} alt={track.title} className="w-11 h-11 rounded-lg object-cover" />
                 {isPlaying && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-lg">
-                    <span className="text-white text-xs animate-pulse">▶</span>
+                    <span className="text-white text-xs animate-pulse">\u25B6</span>
                   </div>
                 )}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">{track.title}</p>
-                <p className="text-xs text-zinc-400 truncate">{track.artist}{track.album ? ` · ${track.album}` : ""}</p>
+                <p className="text-xs text-zinc-400 truncate">{track.artist}{track.album ? ` \u00B7 ${track.album}` : ""}</p>
               </div>
               {noPreview && <span className="text-xs text-zinc-600">no preview</span>}
             </motion.div>
@@ -263,27 +263,27 @@ export default function GoodVibesFrontend() {
       {/* AI Playlist */}
       <div className="bg-zinc-800/60 border border-zinc-700 rounded-2xl p-5">
         <h2 className="text-sm font-semibold mb-3 flex items-center gap-2">
-          ✨ AI Playlist Generator
-          {!subscribed && <span className="text-xs text-violet-400 font-normal">· Premium</span>}
+          \u2728 AI Playlist Generator
+          {!subscribed && <span className="text-xs text-violet-400 font-normal">\u00B7 Commercial-Free</span>}
         </h2>
         <div className="flex gap-2">
           <input
             type="text"
-            placeholder="Describe your vibe…"
+            placeholder="Describe your vibe\u2026"
             value={aiPrompt}
             onChange={(e) => setAiPrompt(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && generateAIPlaylist()}
             className="flex-1 bg-zinc-700 border border-zinc-600 rounded-xl px-3 py-2 text-sm text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-600"
           />
           <button onClick={generateAIPlaylist} className="bg-violet-600 hover:bg-violet-500 text-white text-sm px-4 py-2 rounded-xl transition-colors">
-            {subscribed ? "Generate" : "🔒"}
+            {subscribed ? "Generate" : "\uD83D\uDD12"}
           </button>
         </div>
         {generatedPlaylist.length > 0 && (
           <ul className="mt-3 space-y-1">
             {generatedPlaylist.map((name) => (
               <li key={name} className="text-sm text-zinc-300 flex items-center gap-2">
-                <span className="text-zinc-500">•</span> {name}
+                <span className="text-zinc-500">\u2022</span> {name}
               </li>
             ))}
           </ul>
